@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app/src/main/res/values/strings.xml"
 DEST = ROOT / "app/src/main/res/values-zh-rTW/strings.xml"
 DICTIONARY = ROOT / "translation/zh-TW.json"
-PLACEHOLDER = re.compile(r"%(?:\\d+\\$)?[-#+ 0,(]*\\d*(?:\\.\\d+)?[a-zA-Z%]")
+PLACEHOLDER = re.compile(r"%(?:\d+\$)?[-#+ 0,(]*\d*(?:\.\d+)?[a-zA-Z%]")
 
 def placeholders(text):
     return sorted(p for p in PLACEHOLDER.findall(text) if p != "%%")
