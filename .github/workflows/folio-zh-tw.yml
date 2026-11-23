@@ -78,15 +78,36 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon
-      - name: Publish release for Obtainium
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Prepare signed APK
         run: |
+          set -euo pipefail
           APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)
           test -n "$APK"
           cp "$APK" Folio-zh-TW.apk
           sha256sum Folio-zh-TW.apk > SHA256SUMS.txt
+      - name: Save APK as workflow artifact (even if Releases access is unavailable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Folio-zh-TW-signed-APK
+          path: |
+            Folio-zh-TW.apk
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish release for Obtainium
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           gh release create "zh-tw-$GITHUB_RUN_NUMBER" Folio-zh-TW.apk SHA256SUMS.txt --title "Folio 繁體中文 #$GITHUB_RUN_NUMBER" --notes "Unofficial zh-TW build from upstream main. Signed with this fork's key. Update through Obtainium, not the official updater." --target "$(git rev-parse HEAD)" --latest
+      - name: Report release availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "zh-tw-$GITHUB_RUN_NUMBER" >/dev/null 2>&1; then
+            echo "::warning::APK build and artifact upload succeeded, but GitHub Release could not be published. Check Settings > Actions > General > Workflow permissions: Read and write permissions."
+            echo "The APK is available under this run's Artifacts section. Obtainium auto-update requires a published Release."
+          fi
       - name: Remove keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/folio-zh-tw.jks"
