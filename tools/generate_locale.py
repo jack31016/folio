@@ -44,7 +44,7 @@ def placeholders(text):
     return sorted(PLACEHOLDER.findall(text))
 
 def android_escape(text):
-    return escape(text, quote=False).replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
+    return escape(text).replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
 
 def strings(root):
     return {x.get("name"): x for x in root.findall("string")}
