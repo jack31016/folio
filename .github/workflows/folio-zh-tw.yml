@@ -1,0 +1,90 @@
+name: Folio zh-TW automatic build
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'translation/**'
+      - 'tools/**'
+      - '.github/workflows/folio-zh-tw.yml'
+permissions:
+  contents: write
+concurrency:
+  group: folio-zh-tw
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Sync official upstream
+        if: github.event_name != 'push'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add upstream https://github.com/McCal-Codes/folio.git
+          git fetch upstream main
+          git merge --no-edit upstream/main
+          git push origin HEAD:main
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - name: Generate translation resources
+        run: python3 tools/generate_locale.py
+      - name: Set increasing fork build version
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          p = pathlib.Path('app/build.gradle.kts')
+          s = p.read_text()
+          assert 'versionName = folioVersion' in s
+          s = s.replace('versionName = folioVersion', 'versionName = "$folioVersion-zhTW.' + os.environ['BUILD_NUMBER'] + '"', 1)
+          marker = 'testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"'
+          assert marker in s
+          s = s.replace(marker, 'versionCode = ' + str(100000000 + int(os.environ['BUILD_NUMBER'])) + '\n        ' + marker, 1)
+          p.write_text(s)
+          PY
+      - name: Validate signing secrets
+        env:
+          KS: ${{ secrets.FOLIO_KEYSTORE_BASE64 }}
+          PASS: ${{ secrets.FOLIO_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.FOLIO_KEY_ALIAS }}
+          KEYPASS: ${{ secrets.FOLIO_KEY_PASSWORD }}
+        run: |
+          test -n "$KS" && test -n "$PASS" && test -n "$ALIAS" && test -n "$KEYPASS" || { echo 'Missing signing secrets; see README-zh-TW.md'; exit 1; }
+      - name: Restore keystore
+        env:
+          KS: ${{ secrets.FOLIO_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KS" | base64 --decode > "$RUNNER_TEMP/folio-zh-tw.jks"
+          chmod 600 "$RUNNER_TEMP/folio-zh-tw.jks"
+      - name: Compile signed APK
+        env:
+          FOLIO_RELEASE_STORE_FILE: ${{ runner.temp }}/folio-zh-tw.jks
+          FOLIO_RELEASE_STORE_PASSWORD: ${{ secrets.FOLIO_STORE_PASSWORD }}
+          FOLIO_RELEASE_KEY_ALIAS: ${{ secrets.FOLIO_KEY_ALIAS }}
+          FOLIO_RELEASE_KEY_PASSWORD: ${{ secrets.FOLIO_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon
+      - name: Publish release for Obtainium
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" Folio-zh-TW.apk
+          sha256sum Folio-zh-TW.apk > SHA256SUMS.txt
+          gh release create "zh-tw-$GITHUB_RUN_NUMBER" Folio-zh-TW.apk SHA256SUMS.txt --title "Folio 繁體中文 #$GITHUB_RUN_NUMBER" --notes "Unofficial zh-TW build from upstream main. Signed with this fork's key. Update through Obtainium, not the official updater." --target "$(git rev-parse HEAD)" --latest
+      - name: Remove keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/folio-zh-tw.jks"
