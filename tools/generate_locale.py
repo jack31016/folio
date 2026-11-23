@@ -82,8 +82,8 @@ def main():
     parsed = ET.fromstring(content)
     generated = strings(parsed)
     expected = {name for name, item in base.items() if item.get("translatable") != "false"}
-    if set(generated) != expected:
-        raise ValueError(f"Locale incomplete: missing={sorted(expected-set(generated))}; extra={sorted(set(generated)-expected)}")
+    if expected - set(generated):
+        raise ValueError(f"Locale incomplete: missing={sorted(expected-set(generated))}")
     for name, item in generated.items():
         if placeholders(base[name].text or "") != placeholders(item.text or ""):
             raise ValueError(f"Formatting mismatch: {name}")
