@@ -36,6 +36,8 @@ jobs:
           java-version: '17'
           cache: gradle
       - uses: android-actions/setup-android@v4
+      - name: Install Traditional Chinese conversion tools
+        run: python3 -m pip install --user opencc-python-reimplemented
       - name: Generate translation resources
         run: python3 tools/generate_locale.py
       - name: Set increasing fork build version
