@@ -17,7 +17,7 @@ EN = ROOT / "app/src/main/res/values/strings.xml"
 ZH_HANS = ROOT / "app/src/main/res/values-b+zh+Hans/strings.xml"
 DEST = ROOT / "app/src/main/res/values-zh-rTW/strings.xml"
 OVERRIDES = ROOT / "translation/zh-TW.json"
-PLACEHOLDER = re.compile(r"%(?:\d+\$)?[-#+ 0,(]*\d*(?:\.\d+)?[a-zA-Z]")
+PLACEHOLDER = re.compile(r"%(?:\d+\$)?(?:\d+(?:\.\d+)?)?[a-zA-Z]")
 STRING = re.compile(r'(<string\s+name="([^"]+)"[^>]*>)(.*?)(</string>)', re.DOTALL)
 
 TAIWAN_TERMS = (
