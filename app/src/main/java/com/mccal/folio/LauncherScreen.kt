@@ -239,6 +239,10 @@ fun LauncherScreen(
         interrupted?.let { IslandEvents.notice(recoveryContext, recoveryContext.getString(R.string.market_install_put_back, it.name)) }
         pulled.forEach { IslandEvents.notice(recoveryContext, recoveryContext.getString(R.string.text_1_s_was_pulled_so_it_s_off, it.name)) }
     }
+    // Keyd's source, offered once to anyone with the Market open. Apart from recovery above so Home never waits on the network.
+    LaunchedEffect(marketSession) {
+        if (MarketAccess.isOpen(recoveryContext)) withContext(Dispatchers.IO) { MarketAccess.offerKeydSource(marketSession.sources, marketSession.prefs) }
+    }
     DisposableEffect(sheet == "widgets") {
         val active = sheet == "widgets"
         if (active) LiveDiscover.setExternalResultPending(launcherActivity, "main", "widget-picker", true)
@@ -434,6 +438,14 @@ fun LauncherScreen(
         if (before == homeScreen || drag.active || widgetSession != null || resize.active) return@LaunchedEffect
         pageAfterScreenChange(pager.settledPage, homePages, homeMemory.page(homeScreen))?.let { pager.scrollToPage(it) }
     }
+    // A bug report says where Home is (screen, page, hidden pages, what each screen rested on, Focus). Read only when a report is made.
+    val homeStatusNow = rememberUpdatedState<() -> HomeStateInfo?> {
+        val real = model.state.value
+        HomeStateInfo(homeScreen, pager.currentPage, FocusPages.shown(real).size, real.layout.pageCount, real.hiddenPages,
+            homeMemory.cover.takeIf { it >= 0 }, homeMemory.inner.takeIf { it >= 0 },
+            focusOn = real.activeFocus != null, focusLimitsPages = FocusPages.lockingFocus(real) != null, profile = real.profile().name.lowercase())
+    }
+    DisposableEffect(Unit) { Diagnostics.homeStatus = { homeStatusNow.value() }; onDispose { Diagnostics.homeStatus = null } }
     LaunchedEffect(homePages, state.editRevision) {
         if (homePages != previousHomePages && !drag.active) {
             // Pin edits in the library keep the library selected; a completed drop stays on home.
@@ -530,11 +542,16 @@ fun LauncherScreen(
         else { focus.clearFocus(); scope.launch { pager.animateScrollToPage(0) } } }
     val openDiscover = { if (firstHome > 0) scope.launch { pager.animateScrollToPage(-1) } else if (discoverMode) onDiscover(); Unit }
     val openLibrary = { scope.launch { pager.animateScrollToPage(homePages) }; Unit }
+    // The page controls under Home (and the Preview bar before Folio is the Home app), measured: the old guess
+    // of 44dp, 88dp with the Preview bar, left the App Library's panel under the Preview bar sideways.
+    // Declared here, above the pages, so Today View can stop its last widget above them too.
+    var bottomControlsHeight by remember { mutableStateOf(0.dp) }
     val todayContent: @Composable (Modifier) -> Unit = { pageModifier ->
         TodayView(state, widgets, pageModifier,
             onSearch = { launcherActivity.openSpotlight() }, onLaunch = onLaunch,
             onAddWidget = { picker.toToday = true; picker.anyApp(); sheet = "widgets" },
-            onRemove = model::removeTodayWidget, onMove = model::moveTodayWidget)
+            onRemove = model::removeTodayWidget, onMove = model::moveTodayWidget,
+            bottomPadding = todayBottomPadding(isDefaultHome, bottomControlsHeight.value).dp)
     }
     val leftPageContent: @Composable (Modifier) -> Unit = { pageModifier ->
         when {
@@ -892,9 +909,6 @@ fun LauncherScreen(
                 "generous" -> 8.dp
                 else -> 0.dp
             }
-            // The page controls under Home (and the Preview bar before Folio is the Home app), measured: the old guess
-            // of 44dp, 88dp with the Preview bar, left the App Library's panel under the Preview bar sideways.
-            var bottomControlsHeight by remember { mutableStateOf(0.dp) }
             val windowHeightDp = maxHeight.value
             val geometry = homeGeometry(maxWidth.value, maxHeight.value, preset, state.labels, dockSlots = shownDock.size, statusRail = state.verticalStatus,
                 statusHeight = if (state.verticalStatus) statusHeight + 22f else 0f,
@@ -2258,7 +2272,7 @@ fun LauncherScreen(
         // A photo chosen for the wallpaper (picked on the Wallpaper page, shared to Folio, or from the Edit menu) opens full screen here to
         // frame and blur, so Set and Cancel both land on Home. With the gate closed the Wallpaper page's own preview rows do it.
         launcherActivity.backgrounds.previewBitmap?.takeIf { launcherActivity.backgrounds.previewPending && !state.systemWallpaper && wallpaperFraming }?.let { photo ->
-            PhotoFrameDialog(photo, launcherActivity.backgrounds::cancelPreview) { crop, blur -> launcherActivity.backgrounds.applyPreview(crop, blur) }
+            PhotoFrameDialog(photo, state, launcherActivity.backgrounds::cancelPreview) { crop, blur -> launcherActivity.backgrounds.applyPreview(crop, blur) }
         }
         if (customizeHome) CustomizeHomeSheet(sample = state.apps.firstOrNull(), style = state.iconStyle, tint = state.iconTint,
             tintFromWallpaper = state.iconTintFromWallpaper, onStyle = { model.setIconStyle(it, state.iconTint) },
